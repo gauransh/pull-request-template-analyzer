@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "pull-request-template-analyzer"
+version = "0.1.0"
+description = "Package is created to have code available for the empirical study on the effects of Pull Request Templates on review quality and collaboration in novice software engineering team"
+authors = ["gauransh <gauranshtandon@gmail.com>"]
+license = "BSD-3-Clause license"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+requests = "^2.31.0"
+requests-mock = "^1.11.0"
+pandas = "^2.2.1"
+pytest = "^8.1.1"
+argparse = "^1.4.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

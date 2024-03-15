@@ -1,0 +1,23 @@
+language: python
+python:
+  - "3.9"  # Use the closest available version if 3.12 isn't available
+
+# Set PYTHONPATH if your project requires it (adjust the path as necessary)
+env:
+  global:
+    - PYTHONPATH=$PYTHONPATH:/home/travis/build/gauransh/pull-request-template-analyzer
+
+# Command to install dependencies using poetry
+install:
+  - pip install poetry
+  - poetry install
+
+# Command to run tests
+script:
+  - poetry run pytest tests/
+
+# Cache the Poetry installation to speed up builds
+cache:
+  directories:
+    - $HOME/.cache/pypoetry
+

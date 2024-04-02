@@ -1,9 +1,9 @@
 import pytest
-import pandas as pd
-import os
 import requests_mock
 from src.data_collection.github_collector import GitDataCollector
-from io import StringIO
+from mysql.connector.errors import Error
+from unittest.mock import MagicMock, Mock, patch
+import pytest
 
 
 @pytest.fixture
@@ -15,6 +15,13 @@ def git_data_collector():
         url="https://api.github.com",
         max_pages=2,
         per_page=5,
+        db_config={
+            "database_type": "sql",  # Specify the database type for consistency
+            "host": "localhost",
+            "database": "testdb",
+            "user": "testuser",
+            "password": "testpass",
+        },
     )
 
 
@@ -95,3 +102,103 @@ def test_create_dataframe_with_prs(git_data_collector):
         assert len(df_prs) == 1
         assert df_prs.iloc[0]["repo_name"] == "repo1"
         assert df_prs.iloc[0]["pr_id"] == "pr1"
+
+
+@pytest.fixture
+def mock_db_connection(mocker):
+    """Fixture to mock database connection."""
+    mock_connection = mocker.MagicMock()
+    mock_cursor = mocker.MagicMock()
+    mock_connection.cursor.return_value = mock_cursor
+    mocker.patch("mysql.connector.connect", return_value=mock_connection)
+    return mock_connection, mock_cursor
+
+
+def test_connect_to_db_success(git_data_collector, mock_db_connection):
+    connection, _ = mock_db_connection
+    assert git_data_collector.connect_to_db() == connection
+
+
+def test_connect_to_db_failure(mocker, git_data_collector):
+    mocker.patch("mysql.connector.connect", side_effect=Error("Connection failed"))
+    assert git_data_collector.connect_to_db() is None
+
+
+@pytest.fixture
+def mock_sqlite_connection(mocker):
+    """Fixture to mock SQLite connection and cursor."""
+    mock_connection = mocker.MagicMock()
+    mock_cursor = mocker.MagicMock()
+    mock_connection.cursor.return_value = mock_cursor
+    mocker.patch("sqlite3.connect", return_value=mock_connection)
+    return mock_connection, mock_cursor
+
+
+def test_insert_pr_data_success(git_data_collector, mock_db_connection):
+    _, mock_cursor = mock_db_connection
+    pr_data = {
+        "repo_name": "repo1",
+        "pr_id": 1,
+        "pr_state": "closed",
+        "pr_created_at": "2020-01-01T00:00:00Z",
+        "pr_updated_at": "2020-01-02T00:00:00Z",
+        "pr_merged_at": None,
+        "pr_title": "Test PR",
+        "pr_user_login": "user1",
+        "pr_diff_url": "https://api.github.com/repos/testOwner/repo1/pulls/1.diff",
+        "pr_body": "Test body",
+        "pr_reviwer": "reviewer1",
+        "pr_comments_count": 1,
+        "pr_comments": "",
+        "pr_commits_count": 1,
+        "pr_commits_info": "[{commits_info}]",
+    }
+    git_data_collector.insert_pr_data(pr_data)
+    mock_cursor.execute.assert_called()  # You can add more specific checks here
+
+
+def test_insert_pr_data_failure(git_data_collector, mocker):
+    mocker.patch("mysql.connector.connect", side_effect=Error("Connection failed"))
+    pr_data = {
+        "repo_name": "repo1",
+        "pr_id": 1,
+        "pr_state": "closed",
+        "pr_created_at": "2020-01-01T00:00:00Z",
+        "pr_updated_at": "2020-01-02T00:00:00Z",
+        "pr_merged_at": None,
+        "pr_title": "Test PR",
+        "pr_user_login": "user1",
+        "pr_diff_url": "https://api.github.com/repos/testOwner/repo1/pulls/1.diff",
+        "pr_body": "Test body",
+        "pr_reviwer": "reviewer1",
+        "pr_comments_count": 1,
+        "pr_comments": "",
+        "pr_commits_count": 1,
+        "pr_commits_info": "[{commits_info}]",
+    }
+    git_data_collector.insert_pr_data(pr_data)
+
+
+@pytest.fixture
+def git_data_collector_sqlite():
+    """Fixture to create a GitDataCollector instance configured for SQLite testing."""
+    collector = GitDataCollector(
+        organization="testOrg",
+        token="testToken",
+        url="https://api.github.com",
+        max_pages=2,
+        per_page=5,
+        db_config={
+            "database_type": "sqlite3",
+            "database": ":memory:",  # Use an in-memory database for testing
+        },
+    )
+    return collector
+
+
+@pytest.fixture
+def mock_mongo_client(mocker):
+    """Fixture to mock MongoClient for MongoDB tests."""
+    mock_client = mocker.MagicMock()
+    mocker.patch("pymongo.MongoClient", return_value=mock_client)
+    return mock_client

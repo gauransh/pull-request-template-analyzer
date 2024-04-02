@@ -15,6 +15,7 @@ def git_data_collector():
         max_pages=2,
         per_page=5,
         db_config={
+            "database_type": "sql",  # Specify the database type for consistency
             "host": "localhost",
             "database": "testdb",
             "user": "testuser",
@@ -104,6 +105,7 @@ def test_create_dataframe_with_prs(git_data_collector):
 
 @pytest.fixture
 def mock_db_connection(mocker):
+    """Fixture to mock database connection."""
     mock_connection = mocker.MagicMock()
     mock_cursor = mocker.MagicMock()
     mock_connection.cursor.return_value = mock_cursor
@@ -120,6 +122,30 @@ def test_connect_to_db_failure(mocker, git_data_collector):
     mocker.patch("mysql.connector.connect", side_effect=Error("Connection failed"))
     assert git_data_collector.connect_to_db() is None
 
+@pytest.fixture
+def mock_sqlite_connection(mocker):
+    """Fixture to mock SQLite connection and cursor."""
+    mock_connection = mocker.MagicMock()
+    mock_cursor = mocker.MagicMock()
+    mock_connection.cursor.return_value = mock_cursor
+    mocker.patch("sqlite3.connect", return_value=mock_connection)
+    return mock_connection, mock_cursor
+
+def test_sqlite_create_table_success(mock_sqlite_connection):
+    """Test successful creation of the SQLite table."""
+    # Adjust db_config to use SQLite for this specific test
+    collector = GitDataCollector(
+        organization="testOrg",
+        token="testToken",
+        url="https://api.github.com",
+        db_config={
+            "database_type": "sqlite3",  # Specify SQLite as the database type
+            "database": ":memory:",  # Use an in-memory database for testing
+        },
+    )
+    collector.create_sqlite_table()
+    _, mock_cursor = mock_sqlite_connection
+    assert mock_cursor.execute.called
 
 def test_insert_pr_data_success(git_data_collector, mock_db_connection):
     _, mock_cursor = mock_db_connection

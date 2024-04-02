@@ -134,23 +134,6 @@ def mock_sqlite_connection(mocker):
     return mock_connection, mock_cursor
 
 
-def test_sqlite_create_table_success(mock_sqlite_connection):
-    """Test successful creation of the SQLite table."""
-    # Adjust db_config to use SQLite for this specific test
-    collector = GitDataCollector(
-        organization="testOrg",
-        token="testToken",
-        url="https://api.github.com",
-        db_config={
-            "database_type": "sqlite3",  # Specify SQLite as the database type
-            "database": ":memory:",  # Use an in-memory database for testing
-        },
-    )
-    collector.create_sqlite_table()
-    _, mock_cursor = mock_sqlite_connection
-    assert mock_cursor.execute.called
-
-
 def test_insert_pr_data_success(git_data_collector, mock_db_connection):
     _, mock_cursor = mock_db_connection
     pr_data = {

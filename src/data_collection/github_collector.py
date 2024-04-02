@@ -1,13 +1,13 @@
 import sys
 import argparse
 import logging
+import sqlite3
+from sqlite3 import Error
 from typing import List, Dict, Optional
 import requests
 import pandas as pd
 import mysql.connector
-import sqlite3
-from sqlite3 import Error
-from pymongo import MongoClient
+from pymongo import MongoClient  # pylint: disable=import-error
 
 
 # Configure logging
@@ -64,7 +64,7 @@ class GitDataCollector:
         per_page: int = None,
         repo: str = None,
         db_config: str = None,
-        mongo_uri: str = None
+        mongo_uri: str = None,
     ):
         self.organization = organization
         self.headers = {
@@ -86,7 +86,6 @@ class GitDataCollector:
         self.db_config = db_config
 
         self.mongo_uri = mongo_uri
-
 
     def is_token_valid(self) -> bool:
         """
@@ -175,7 +174,7 @@ class GitDataCollector:
 
     def fetch_and_process_prs(self, repo):
         """Fetch PRs for a single repo and process them one by one."""
-        prs_url = f"{self.base_url}/repos/{repo['owner']['login']}/{repo['name']}/pulls?state=all&per_page={self.per_page}"
+        prs_url = f"{self.base_url}/repos/{repo['owner']['login']}/{repo['name']}/pulls?state=all&per_page={self.per_page}"  # pylint: disable=line-too-long
         page = 1
         while True:
             response = self.make_api_request(f"{prs_url}&page={page}")
@@ -185,7 +184,7 @@ class GitDataCollector:
             if not prs:
                 break
             for pr in prs:
-                self.process_single_pr(pr, repo['name'])
+                self.process_single_pr(pr, repo["name"])
             page += 1
 
     def process_single_pr(self, pr, repo_name):
@@ -193,7 +192,7 @@ class GitDataCollector:
         pr_data = self.build_pr_data_row(pr, repo_name)
         if pr_data:
             self.insert_pr_data(pr_data)
-            self.insert_pr_body_mongodb(pr_data['pr_id'], pr_data['pr_body'])
+            self.insert_pr_body_mongodb(pr_data["pr_id"], pr_data["pr_body"])
 
     def create_and_store_pr_data(self):
         """Main method to fetch and store PR data, adjusted for one-by-one processing."""
@@ -284,7 +283,7 @@ class GitDataCollector:
 
     def connect_to_db(self):  # pylint: disable=inconsistent-return-statements
         """Connect to the MySQL database."""
-        if self.db_config['database_type'] == 'sql':
+        if self.db_config["database_type"] == "sql":
             try:
                 connection = mysql.connector.connect(**self.db_config)
                 if connection.is_connected():
@@ -293,9 +292,9 @@ class GitDataCollector:
             except mysql.connector.Error as e:
                 print(f"Error while connecting to MySQL: {e}")
                 return None  # inconsistent-return-statements
-        elif self.db_config['database_type'] == 'sqlite3':
+        elif self.db_config["database_type"] == "sqlite3":
             try:
-                connection = sqlite3.connect(self.db_config['database'])
+                connection = sqlite3.connect(self.db_config["database"])
                 self.create_sqlite_table()
                 return connection
             except Error as e:
@@ -303,9 +302,11 @@ class GitDataCollector:
                 return None
 
     def create_sqlite_table(self):
-        with sqlite3.connect(self.db_config['database']) as conn:
+        """Creates a SQLite table for storing pull request data if it does not already exist."""
+        with sqlite3.connect(self.db_config["database"]) as conn:
             cursor = conn.cursor()
-            cursor.execute('''
+            cursor.execute(
+                """
             CREATE TABLE IF NOT EXISTS pull_requests (
                 repo_name TEXT NOT NULL,
                 pr_id INTEGER PRIMARY KEY,
@@ -319,33 +320,32 @@ class GitDataCollector:
                 pr_comments_count INTEGER NOT NULL,
                 pr_commits_count INTEGER NOT NULL
             );
-            ''')
+            """
+            )
             conn.commit()
-    
-    def insert_pr_body_mongodb(self, pr_id, pr_body):
-        client = MongoClient(self.mongo_uri)
-        db = client['github_prs']  # Database name
-        collection = db['pr_bodies']  # Collection name
 
-        pr_body_doc = {
-            "pr_id": pr_id,
-            "pr_body": pr_body
-        }
+    def insert_pr_body_mongodb(self, pr_id, pr_body):
+        """Inserts a pull request's body into a MongoDB collection, identified by its PR ID."""
+        client = MongoClient(self.mongo_uri)
+        db = client["github_prs"]  # Database name
+        collection = db["pr_bodies"]  # Collection name
+
+        pr_body_doc = {"pr_id": pr_id, "pr_body": pr_body}
 
         result = collection.insert_one(pr_body_doc)
         print(f"Inserted document with ID: {result.inserted_id}")
-        
+
         client.close()
 
     def insert_pr_data(self, pr_data):
         """Insert PR data into the MySQL database."""
-        
-        if self.db_config['database_type'] == 'sql':
+
+        if self.db_config["database_type"] == "sql":
             query = """
             INSERT INTO pull_requests (repo_name, pr_id, pr_state, pr_created_at, pr_updated_at, pr_merged_at, pr_title, pr_user_login, pr_diff_url, pr_body, pr_comments_count, pr_commits_count)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-        elif self.db_config['database_type'] == 'sqlite3':
+        elif self.db_config["database_type"] == "sqlite3":
             query = """
             INSERT INTO pull_requests (repo_name, pr_id, pr_state, pr_created_at, pr_updated_at, pr_merged_at, pr_title, pr_user_login, pr_diff_url, pr_comments_count, pr_commits_count)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -354,43 +354,54 @@ class GitDataCollector:
             connection = self.connect_to_db()
             if connection:
                 cursor = connection.cursor()
-                cursor.execute(query, (
-                    pr_data["repo_name"],
-                    pr_data["pr_id"],
-                    pr_data["pr_state"],
-                    pr_data["pr_created_at"],
-                    pr_data["pr_updated_at"],
-                    pr_data["pr_merged_at"],
-                    pr_data["pr_title"],
-                    pr_data["pr_user_login"],
-                    pr_data["pr_diff_url"],
-                    pr_data["pr_comments_count"],
-                    pr_data["pr_commits_count"],
-                ))
+                cursor.execute(
+                    query,
+                    (
+                        pr_data["repo_name"],
+                        pr_data["pr_id"],
+                        pr_data["pr_state"],
+                        pr_data["pr_created_at"],
+                        pr_data["pr_updated_at"],
+                        pr_data["pr_merged_at"],
+                        pr_data["pr_title"],
+                        pr_data["pr_user_login"],
+                        pr_data["pr_diff_url"],
+                        pr_data["pr_comments_count"],
+                        pr_data["pr_commits_count"],
+                    ),
+                )
                 connection.commit()
                 cursor.close()
         except Error as e:
-            logger.error(f"Failed to insert PR data: {e}")
+            logger.error(  # pylint: disable=logging-fstring-interpolation
+                f"Failed to insert PR data: {e}"
+            )
         finally:
             if connection:
                 connection.close()
 
     def create_and_store_pr_data_all(self):
+        """Fetches pull request data, stores metadata in SQL, and body content in MongoDB."""
         try:
-            df_prs = self.create_dataframe_with_prs()  # Assuming this returns a DataFrame
+            df_prs = (
+                self.create_dataframe_with_prs()
+            )  # Assuming this returns a DataFrame
             if not df_prs.empty:
                 for _, row in df_prs.iterrows():
                     # Example of inserting metadata into SQLite or MySQL
                     self.insert_pr_data(row.to_dict())
-                    
+
                     # Insert PR body into MongoDB
-                    self.insert_pr_body_mongodb(row['pr_id'], row['pr_body'])
-                    
+                    self.insert_pr_body_mongodb(row["pr_id"], row["pr_body"])
+
                 logger.info("Pull request details and bodies successfully stored.")
             else:
                 logger.info("No PR data to store.")
-        except Exception as e:
-            logger.error(f"An error occurred: {e}")
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error(  # pylint: disable=logging-fstring-interpolation
+                f"An error occurred: {e}"
+            )
+
 
 def parse_args():
     """Parses command-line arguments for the GitHub PR Data Fetcher"""
@@ -446,13 +457,13 @@ def create_csv():
 def main():
     """Runs the main program."""
     args = parse_args()
-    mongo_uri = 'mongodb://localhost:27017/'
+    mongo_uri = "mongodb://localhost:27017/"
     db_config = {
         "host": "localhost",
         "user": "yourusername",
         "password": "yourpassword",
-        "database": "/Users/gauranshtandon/Documents/UBC/Repo/pull-request-template-analyzer/src/data_collection/class_pr.db",
-        "database_type": "sqlite3"
+        "database": "/Users/gauranshtandon/Documents/UBC/Repo/pull-request-template-analyzer/src/data_collection/class_pr.db",  # pylint: disable=line-too-long
+        "database_type": "sqlite3",
     }
     gh_data = GitDataCollector(
         organization=args.org,
@@ -462,7 +473,7 @@ def main():
         per_page=args.per_page,
         repo=args.repo,
         db_config=db_config,
-        mongo_uri=mongo_uri
+        mongo_uri=mongo_uri,
     )
 
     if not gh_data.is_token_valid():
@@ -473,6 +484,7 @@ def main():
 
     # Call the method to fetch PR data and store it in the MySQL database
     gh_data.create_and_store_pr_data()
+
 
 if __name__ == "__main__":
     main()

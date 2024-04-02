@@ -2,7 +2,7 @@ import pytest
 import requests_mock
 from src.data_collection.github_collector import GitDataCollector
 from mysql.connector.errors import Error
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock, patch
 import pytest 
 
 @pytest.fixture
@@ -191,30 +191,36 @@ def test_insert_pr_data_failure(git_data_collector, mocker):
     }
     git_data_collector.insert_pr_data(pr_data)
 
-def test_sqlite_create_table_success(mocker, git_data_collector):
-    """Test successful creation of the SQLite table."""
-    mock_connect = mocker.patch("sqlite3.connect")
-    mock_cursor = mocker.MagicMock()
-    mock_connect().cursor.return_value = mock_cursor
-
-    git_data_collector.create_sqlite_table()  # Assuming this method exists and creates the table
-
-    assert mock_cursor.execute.called
-    mock_cursor.execute.assert_called_with('''
-        CREATE TABLE IF NOT EXISTS pull_requests (
-            repo_name TEXT NOT NULL,
-            pr_id INTEGER PRIMARY KEY,
-            pr_state TEXT NOT NULL,
-            pr_created_at TEXT NOT NULL,
-            pr_updated_at TEXT NOT NULL,
-            pr_merged_at TEXT,
-            pr_title TEXT NOT NULL,
-            pr_user_login TEXT NOT NULL,
-            pr_diff_url TEXT NOT NULL,
-            pr_comments_count INTEGER NOT NULL,
-            pr_commits_count INTEGER NOT NULL
-        );
-    ''')
+def test_sqlite_create_table_success(mocker, git_data_collector_sqlite):
+    """Test successful creation of the SQLite table with mocked SQLite connection."""
+    # Mock sqlite3's connect function to return a mock connection object
+    mock_connection = MagicMock()
+    mock_cursor = MagicMock()
+    mock_connection.cursor.return_value = mock_cursor
+    
+    with patch("sqlite3.connect", return_value=mock_connection) as mock_connect:
+        # Ensure the create_sqlite_table method uses the mocked connection
+        git_data_collector_sqlite.create_sqlite_table()
+        
+        # Assert sqlite3.connect was called with the in-memory database
+        mock_connect.assert_called_once_with(":memory:")
+        
+        # Verify the cursor's execute method was called to create a table
+        assert mock_cursor.execute.called, "Expected the cursor's execute method to be called to create a table."
+        
+        # Example assertion to check if a specific SQL command was executed
+        # This SQL statement should match what's actually used in your `create_sqlite_table` method
+        mock_cursor.execute.assert_called_with("""
+            CREATE TABLE IF NOT EXISTS pull_requests (
+                id INTEGER PRIMARY KEY,
+                repo_name TEXT NOT NULL,
+                pr_number INTEGER NOT NULL,
+                pr_title TEXT NOT NULL,
+                state TEXT NOT NULL,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL
+            );
+        """)
 
 @pytest.fixture
 def mock_mongo_client(mocker):
@@ -223,16 +229,21 @@ def mock_mongo_client(mocker):
     mocker.patch("pymongo.MongoClient", return_value=mock_client)
     return mock_client
 
-def test_insert_pr_body_mongodb_success(git_data_collector, mock_mongo_client):
+def test_insert_pr_body_mongodb_success(mocker, git_data_collector):
     """Test inserting PR body into MongoDB."""
+    # Patch the MongoClient to return a mock client
+    mock_mongo_client = mocker.patch("pymongo.MongoClient")
+    
+    # Set up mock database and collection
+    mock_db = mocker.MagicMock()
+    mock_collection = mocker.MagicMock()
+    mock_mongo_client.return_value.__getitem__.return_value = mock_db
+    mock_db.__getitem__.return_value = mock_collection
+    
+    # Attempt to insert a PR body
     pr_id = "testPRID"
     pr_body = "This is a test PR body."
-    db = mock_mongo_client['github_prs']
-    collection = db['pr_bodies']
-
     git_data_collector.insert_pr_body_mongodb(pr_id, pr_body)
-
-    # Check if insert_one was called on the collection
-    assert collection.insert_one.called
-    collection.insert_one.assert_called_with({"pr_id": pr_id, "pr_body": pr_body})
-
+    
+    # Ensure that insert_one was called on the collection
+    mock_collection.insert_one.assert_called_once_with({"pr_id": pr_id, "pr_body": pr_body})

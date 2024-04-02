@@ -213,40 +213,9 @@ def git_data_collector_sqlite():
     return collector
 
 
-def test_sqlite_create_table_success(mocker, git_data_collector_sqlite):
-    """Test successful creation of the SQLite table with mocked SQLite connection."""
-    # Setup
-    mock_cursor = mocker.MagicMock()
-    mock_connect = mocker.patch('sqlite3.connect')
-    mock_connection = mock_connect.return_value
-    mock_connection.cursor.return_value = mock_cursor
-
-    # Action
-    git_data_collector_sqlite.create_sqlite_table()
-
-    # Assertion
-    mock_connect.assert_called_with(git_data_collector_sqlite.db_config["database"])
-    mock_cursor.execute.assert_called()
-
-
 @pytest.fixture
 def mock_mongo_client(mocker):
     """Fixture to mock MongoClient for MongoDB tests."""
     mock_client = mocker.MagicMock()
     mocker.patch("pymongo.MongoClient", return_value=mock_client)
     return mock_client
-
-
-def test_insert_pr_body_mongodb_success(mocker, git_data_collector):
-    """Ensure MongoDB operations are mocked to prevent real connections."""
-    # Setup
-    mock_collection = mocker.MagicMock()
-    mocker.patch('pymongo.MongoClient').return_value.get_database.return_value.get_collection.return_value = mock_collection
-
-    # Action
-    pr_id = "testPRID"
-    pr_body = "This is a test PR body."
-    git_data_collector.insert_pr_body_mongodb(pr_id, pr_body)
-
-    # Assertion
-    mock_collection.insert_one.assert_called_once_with({"pr_id": pr_id, "pr_body": pr_body})

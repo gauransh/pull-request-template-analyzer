@@ -164,3 +164,49 @@ def test_insert_pr_data_failure(git_data_collector, mocker):
         "pr_commits_info": "[{commits_info}]",
     }
     git_data_collector.insert_pr_data(pr_data)
+
+def test_sqlite_create_table_success(mocker, git_data_collector):
+    """Test successful creation of the SQLite table."""
+    mock_connect = mocker.patch("sqlite3.connect")
+    mock_cursor = mocker.MagicMock()
+    mock_connect().cursor.return_value = mock_cursor
+
+    git_data_collector.create_sqlite_table()  # Assuming this method exists and creates the table
+
+    assert mock_cursor.execute.called
+    mock_cursor.execute.assert_called_with('''
+        CREATE TABLE IF NOT EXISTS pull_requests (
+            repo_name TEXT NOT NULL,
+            pr_id INTEGER PRIMARY KEY,
+            pr_state TEXT NOT NULL,
+            pr_created_at TEXT NOT NULL,
+            pr_updated_at TEXT NOT NULL,
+            pr_merged_at TEXT,
+            pr_title TEXT NOT NULL,
+            pr_user_login TEXT NOT NULL,
+            pr_diff_url TEXT NOT NULL,
+            pr_comments_count INTEGER NOT NULL,
+            pr_commits_count INTEGER NOT NULL
+        );
+    ''')
+
+@pytest.fixture
+def mock_mongo_client(mocker):
+    """Fixture to mock MongoClient for MongoDB tests."""
+    mock_client = mocker.MagicMock()
+    mocker.patch("pymongo.MongoClient", return_value=mock_client)
+    return mock_client
+
+def test_insert_pr_body_mongodb_success(git_data_collector, mock_mongo_client):
+    """Test inserting PR body into MongoDB."""
+    pr_id = "testPRID"
+    pr_body = "This is a test PR body."
+    db = mock_mongo_client['github_prs']
+    collection = db['pr_bodies']
+
+    git_data_collector.insert_pr_body_mongodb(pr_id, pr_body)
+
+    # Check if insert_one was called on the collection
+    assert collection.insert_one.called
+    collection.insert_one.assert_called_with({"pr_id": pr_id, "pr_body": pr_body})
+
